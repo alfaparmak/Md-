@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ screen.name }} - Display</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: black;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        .media-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: black;
+        }
+
+        .media-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .media-wrapper.active {
+            opacity: 1;
+            z-index: 2;
+        }
+
+        .media-wrapper.next {
+            z-index: 1;
+        }
+
+        .media-item {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-origin: center;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .media-item[style*="rotate(90deg)"],
+        .media-item[style*="rotate(270deg)"] {
+            width: 100vh;
+            height: 100vw;
+            transform-origin: center;
+        }
+
+        .media-wrapper .media-item[style*="rotate(0deg)"] {
+            transform: translate(-50%, -50%) rotate(0deg);
+        }
+
+        .media-wrapper .media-item[style*="rotate(90deg)"] {
+            transform: translate(-50%, -50%) rotate(90deg);
+        }
+
+        .media-wrapper .media-item[style*="rotate(180deg)"] {
+            transform: translate(-50%, -50%) rotate(180deg);
+        }
+
+        .media-wrapper .media-item[style*="rotate(270deg)"] {
+            transform: translate(-50%, -50%) rotate(270deg);
+        }
+
+        .fullscreen-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            z-index: 1000;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .media-container:hover .fullscreen-button {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="media-container" id="mediaContainer">
+        {% for schedule in active_media %}
+            <div class="media-wrapper">
+                {% if schedule.media.media_type == 'image' %}
+                <img src="{{ url_for('static', filename='uploads/' + schedule.media.filename) }}"
+                     alt="{{ schedule.media.original_filename }}"
+                     class="media-item"
+                     style="transform: translate(-50%, -50%) rotate({{ schedule.media.rotation }}deg)"
+                     data-duration="{{ schedule.media.duration or 5 }}">
+                {% else %}
+                <video src="{{ url_for('static', filename='uploads/' + schedule.media.filename) }}"
+                       class="media-item"
+                       style="transform: translate(-50%, -50%) rotate({{ schedule.media.rotation }}deg)"
+                       data-duration="{{ schedule.media.duration }}"
+                       playsinline
+                       muted>
+                </video>
+                {% endif %}
+            </div>
+        {% endfor %}
+        <button class="fullscreen-button" id="fullscreenButton">Tam Ekran</button>
+    </div>
+
+    <script>
+        const mediaContainer = document.getElementById('mediaContainer');
+        const mediaWrappers = document.querySelectorAll('.media-wrapper');
+        const fullscreenButton = document.getElementById('fullscreenButton');
+        let currentIndex = 0;
+        let isTransitioning = false;
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                if (mediaContainer.requestFullscreen) {
+                    mediaContainer.requestFullscreen();
+                } else if (mediaContainer.webkitRequestFullscreen) {
+                    mediaContainer.webkitRequestFullscreen();
+                } else if (mediaContainer.msRequestFullscreen) {
+                    mediaContainer.msRequestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        }
+
+        function showMedia(index) {
+            if (isTransitioning || mediaWrappers.length === 0) return;
+            isTransitioning = true;
+
+            // Remove active class from all wrappers
+            mediaWrappers.forEach(wrapper => {
+                wrapper.classList.remove('active', 'next');
+            });
+
+            const currentWrapper = mediaWrappers[index];
+            const nextIndex = (index + 1) % mediaWrappers.length;
+            const nextWrapper = mediaWrappers[nextIndex];
+
+            if (!currentWrapper) {
+                isTransitioning = false;
+                return;
+            }
+
+            // Setup next media
+            if (nextWrapper) {
+                nextWrapper.classList.add('next');
+                const nextMedia = nextWrapper.querySelector('video, img');
+                if (nextMedia.tagName === 'VIDEO') {
+                    nextMedia.currentTime = 0;
+                }
+            }
+
+            // Show current media
+            currentWrapper.classList.add('active');
+            const currentMedia = currentWrapper.querySelector('video, img');
+            const duration = parseInt(currentMedia.dataset.duration) * 1000;
+
+            if (currentMedia.tagName === 'VIDEO') {
+                currentMedia.currentTime = 0;
+                currentMedia.play().then(() => {
+                    isTransitioning = false;
+                }).catch(() => {
+                    isTransitioning = false;
+                    nextMedia();
+                });
+
+                currentMedia.onended = () => {
+                    nextMedia();
+                };
+            } else {
+                setTimeout(() => {
+                    isTransitioning = false;
+                }, 1000);
+
+                setTimeout(nextMedia, duration);
+            }
+        }
+
+        function nextMedia() {
+            if (mediaWrappers.length === 0) return;
+            currentIndex = (currentIndex + 1) % mediaWrappers.length;
+            showMedia(currentIndex);
+        }
+
+        function updateMedia() {
+            fetch(`/screen/{{ screen.id }}/active-media`)
+                .then(response => response.json())
+                .then(mediaList => {
+                    if (mediaList.length !== mediaWrappers.length) {
+                        location.reload();
+                    }
+                })
+                .catch(error => console.error('Error updating media:', error));
+        }
+
+        // Initial media display
+        if (mediaWrappers.length > 0) {
+            showMedia(0);
+        }
+
+        // Event listeners
+        fullscreenButton.addEventListener('click', toggleFullscreen);
+        mediaContainer.addEventListener('dblclick', toggleFullscreen);
+
+        // Auto-refresh media list
+        setInterval(updateMedia, 5000);
+
+        // Handle fullscreen changes
+        document.addEventListener('fullscreenchange', () => {
+            fullscreenButton.textContent = document.fullscreenElement ? 'Küçült' : 'Tam Ekran';
+        });
+    </script>
+</body>
+</html>

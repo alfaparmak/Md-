@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center">
+            <h1 class="text-2xl font-semibold text-gray-900">Ekran Yönetimi</h1>
+            <div class="flex space-x-4">
+                <div class="relative">
+                    <button onclick="showConnectOptions()" class="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 transition-colors">
+                        Ekran Bağla
+                    </button>
+                    <div id="connectOptions" class="hidden absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+                        <div class="py-1" role="menu">
+                            <button onclick="openQRScanner()" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                QR Kod Tara
+                            </button>
+                            <button onclick="showManualCodeInput()" class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                Kodu Elle Gir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% if current_user.role in ['admin', 'superuser'] %}
+                <a href="{{ url_for('add_screen') }}" class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 transition-colors">
+                    Yeni Ekran Ekle
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 mt-8">
+        {% if not screens %}
+        <div class="text-center py-12">
+            <h3 class="text-lg font-medium text-gray-900">Henüz ekran bulunmuyor</h3>
+            <p class="mt-1 text-sm text-gray-500">Dijital ekran yönetimi için yeni bir ekran ekleyin.</p>
+        </div>
+        {% else %}
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {% for screen in screens %}
+            <div class="bg-white overflow-hidden shadow rounded-lg">
+                <div class="px-4 py-5 sm:p-6">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h3 class="text-lg font-medium text-gray-900">{{ screen.name }}</h3>
+                            <p class="mt-1 text-sm text-gray-500">{{ screen.location }}</p>
+                        </div>
+                        <span class="px-2 py-1 text-xs font-semibold rounded-full
+                            {% if screen.status == 'active' %}
+                                bg-green-100 text-green-800
+                            {% elif screen.status == 'maintenance' %}
+                                bg-yellow-100 text-yellow-800
+                            {% else %}
+                                bg-red-100 text-red-800
+                            {% endif %}">
+                            {% if screen.status == 'active' %}Aktif
+                            {% elif screen.status == 'maintenance' %}Bakımda
+                            {% else %}Pasif{% endif %}
+                        </span>
+                    </div>
+                    <div class="mt-4">
+                        <p class="text-sm text-gray-500">Oluşturulma: {{ screen.created_at.strftime('%d.%m.%Y') }}</p>
+                        <p class="text-sm text-gray-500">Oluşturan: {{ screen.creator.username }}</p>
+                        <div class="mt-4 flex justify-center">
+                            <img src="{{ url_for('get_qr_code', token=screen.display_token) }}" 
+                                 alt="QR Kod"
+                                 class="w-32 h-32">
+                        </div>
+                        <div class="mt-2">
+                            <p class="text-sm text-gray-500">Görüntüleme URL'i:</p>
+                            <input type="text" 
+                                   value="{{ url_for('display_screen', token=screen.display_token, _external=True) }}"
+                                   class="mt-1 block w-full text-sm bg-gray-50 border border-gray-300 rounded px-2 py-1"
+                                   readonly
+                                   onclick="this.select()">
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-4 sm:px-6">
+                    <div class="flex justify-between">
+                        <a href="{{ url_for('screen_media', screen_id=screen.id) }}" 
+                           class="text-blue-600 hover:text-blue-900 font-medium">
+                            Medya Yönet
+                        </a>
+                        {% if current_user.role == 'superuser' %}
+                        <button onclick="deleteScreen({{ screen.id }})"
+                                class="text-red-600 hover:text-red-900 font-medium">
+                            Sil
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- QR Scanner Modal -->
+<div id="qrScannerModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-sm m-4 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <h3 class="text-lg leading-6 font-medium text-gray-900">QR Kod Tara</h3>
+            <div class="mt-2 px-7 py-3">
+                <video id="qrScanner" class="w-full"></video>
+            </div>
+            <div class="items-center px-4 py-3">
+                <button id="closeQRScanner" class="px-4 py-2 bg-gray-500 text-white text-base font-medium rounded-md shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-300">
+                    Kapat
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manual Code Input Modal -->
+<div id="manualCodeModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-full max-w-sm m-4 shadow-lg rounded-md bg-white">
+        <div class="mt-3">
+            <h3 class="text-lg leading-6 font-medium text-gray-900 text-center">Bağlantı Kodunu Girin</h3>
+            <div class="mt-4">
+                <input type="text" id="manualCode" 
+                       class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="Ekranda gösterilen kodu girin">
+                <div class="mt-4 flex justify-end space-x-3">
+                    <button onclick="closeManualCodeModal()" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                        İptal
+                    </button>
+                    <button onclick="submitManualCode()" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                        Bağlan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+<script>
+let html5QrcodeScanner = null;
+
+function showConnectOptions() {
+    const options = document.getElementById('connectOptions');
+    options.classList.toggle('hidden');
+}
+
+// Close connect options when clicking outside
+document.addEventListener('click', (e) => {
+    const options = document.getElementById('connectOptions');
+    const connectButton = e.target.closest('button');
+    if (!options.contains(e.target) && !connectButton?.textContent.includes('Ekran Bağla')) {
+        options.classList.add('hidden');
+    }
+});
+
+function openQRScanner() {
+    const modal = document.getElementById('qrScannerModal');
+    modal.classList.remove('hidden');
+    document.getElementById('connectOptions').classList.add('hidden');
+    
+    html5QrcodeScanner = new Html5Qrcode("qrScanner");
+    html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        {
+            fps: 10,
+            qrbox: { width: 250, height: 250 }
+        },
+        (decodedText) => {
+            html5QrcodeScanner.stop();
+            window.location.href = decodedText;
+        },
+        (error) => {
+            console.error(error);
+        }
+    );
+}
+
+function showManualCodeInput() {
+    document.getElementById('manualCodeModal').classList.remove('hidden');
+    document.getElementById('connectOptions').classList.add('hidden');
+}
+
+function closeManualCodeModal() {
+    document.getElementById('manualCodeModal').classList.add('hidden');
+}
+
+async function submitManualCode() {
+    const code = document.getElementById('manualCode').value.trim();
+    if (!code) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Hata',
+            text: 'Lütfen geçerli bir kod girin'
+        });
+        return;
+    }
+
+    try {
+        const response = await fetch(`/screen/check-pairing/${code}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        window.location.href = `/connect?code=${code}`;
+    } catch (error) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Hata',
+            text: error.message || 'Geçersiz kod'
+        });
+    }
+}
+
+document.getElementById('closeQRScanner').addEventListener('click', () => {
+    const modal = document.getElementById('qrScannerModal');
+    modal.classList.add('hidden');
+    if (html5QrcodeScanner) {
+        html5QrcodeScanner.stop();
+    }
+});
+
+function deleteScreen(screenId) {
+    Swal.fire({
+        title: 'Emin misiniz?',
+        text: "Bu işlem geri alınamaz!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+        confirmButtonText: 'Evet, sil!',
+        cancelButtonText: 'İptal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            fetch(`/screen/${screenId}/delete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    Swal.fire(
+                        'Silindi!',
+                        'Ekran başarıyla silindi.',
+                        'success'
+                    ).then(() => {
+                        window.location.reload();
+                    });
+                } else {
+                    Swal.fire(
+                        'Hata!',
+                        data.error || 'Bir şeyler yanlış gitti',
+                        'error'
+                    );
+                }
+            })
+            .catch(error => {
+                Swal.fire(
+                    'Hata!',
+                    'Bir şeyler yanlış gitti',
+                    'error'
+                );
+            });
+        }
+    });
+}
+</script>
+{% endblock %}

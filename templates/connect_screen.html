@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ekran Bağlantısı - Dijital Ekran Yönetimi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-white rounded-lg shadow-lg p-6">
+            <div class="text-center mb-8">
+                <h1 class="text-2xl font-bold text-gray-900">Dijital Ekran Yönetimi</h1>
+                <p class="mt-2 text-gray-600">Ekranınızı bağlamak için:</p>
+                <ol class="mt-4 text-left text-gray-600 space-y-2">
+                    <li>1. Dijital Ekran uygulamasını açın</li>
+                    <li>2. Ekran Ayarlarına gidin</li>
+                    <li>3. Ekran Bağla'ya dokunun</li>
+                    <li>4. Kameranızı bu ekrana doğrultun</li>
+                </ol>
+            </div>
+
+            <div class="relative">
+                <!-- QR Code Container -->
+                <div id="qrContainer" class="w-64 h-64 mx-auto border-8 border-[#25D366] rounded-lg overflow-hidden">
+                    <div id="qrCode" class="w-full h-full flex items-center justify-center">
+                        <div class="animate-spin rounded-full h-12 w-12 border-4 border-[#25D366]"></div>
+                    </div>
+                </div>
+
+                <!-- Connection Status -->
+                <div id="connectionStatus" class="mt-6 text-center">
+                    <p class="text-gray-600">Bağlantı bekleniyor...</p>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center">
+                <button onclick="refreshQR()" class="text-[#25D366] hover:text-[#128C7E] font-medium">
+                    QR kodu yenilemek için tıklayın
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Screen Info Modal -->
+    <div id="screenInfoModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-sm m-4 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 text-center">Ekran Bilgileri</h3>
+                <form id="screenInfoForm" class="mt-4">
+                    <div class="mb-4">
+                        <label for="screenName" class="block text-sm font-medium text-gray-700">Ekran Adı</label>
+                        <input type="text" id="screenName" name="name" required
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label for="location" class="block text-sm font-medium text-gray-700">Konum</label>
+                        <input type="text" id="location" name="location"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="closeScreenInfoModal()"
+                                class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                            İptal
+                        </button>
+                        <button type="submit"
+                                class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                            Ekranı Bağla
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let pairingInterval;
+        let currentCode;
+        let currentPairingCode;
+
+        async function generateQR() {
+            try {
+                const response = await fetch('/screen/generate-qr', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    currentCode = data.code;
+                    document.getElementById('qrCode').innerHTML = `
+                        <img src="${data.qr_url}" alt="QR Kod" class="w-full h-full">
+                    `;
+                    startPairingCheck();
+                }
+            } catch (error) {
+                console.error('Error generating QR:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Hata',
+                    text: 'QR kod oluşturulamadı'
+                });
+            }
+        }
+
+        function startPairingCheck() {
+            if (pairingInterval) {
+                clearInterval(pairingInterval);
+            }
+
+            pairingInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/screen/check-pairing/${currentCode}`);
+                    const data = await response.json();
+                    
+                    if (data.paired) {
+                        clearInterval(pairingInterval);
+                        document.getElementById('connectionStatus').innerHTML = `
+                            <p class="text-green-600">Bağlandı! Yönlendiriliyor...</p>
+                        `;
+                        setTimeout(() => {
+                            window.location.href = data.display_url;
+                        }, 1500);
+                    }
+                } catch (error) {
+                    console.error('Error checking pairing:', error);
+                }
+            }, 3000);
+        }
+
+        function refreshQR() {
+            document.getElementById('qrCode').innerHTML = `
+                <div class="animate-spin rounded-full h-12 w-12 border-4 border-[#25D366]"></div>
+            `;
+            generateQR();
+        }
+
+        function showScreenInfoModal(pairingCode) {
+            currentPairingCode = pairingCode;
+            document.getElementById('screenInfoModal').classList.remove('hidden');
+        }
+
+        function closeScreenInfoModal() {
+            document.getElementById('screenInfoModal').classList.add('hidden');
+            currentPairingCode = null;
+        }
+
+        document.getElementById('screenInfoForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                code: currentPairingCode,
+                name: document.getElementById('screenName').value,
+                location: document.getElementById('location').value
+            };
+
+            try {
+                const response = await fetch('/screen/pair', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    closeScreenInfoModal();
+                    window.location.href = data.display_url;
+                } else {
+                    throw new Error(data.error || 'Ekran bağlantısı başarısız');
+                }
+            } catch (error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Hata',
+                    text: error.message
+                });
+            }
+        });
+
+        // Handle QR code scanning
+        if (window.location.search.includes('code=')) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            if (code) {
+                showScreenInfoModal(code);
+            }
+        }
+
+        // Initial QR code generation
+        generateQR();
+
+        // Refresh QR code every 60 seconds
+        setInterval(refreshQR, 60000);
+    </script>
+</body>
+</html>
